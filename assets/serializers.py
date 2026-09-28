@@ -4,6 +4,7 @@ from django.db import transaction
 from assets.models import Asset, AssetImage, AssetStatus, AssignAsset
 
 from common.convert_base64_image import convert_image
+from custom_fields.serializers import CustomFieldsSerializerFieldMixin
 from django.utils import timezone
 from datetime import timedelta
 from notifications.models import UserNotification
@@ -58,7 +59,7 @@ class CustomFieldSerializer(serializers.Serializer):
     field_value = serializers.CharField()
 
 
-class AssetSerializer(serializers.ModelSerializer):
+class AssetSerializer(CustomFieldsSerializerFieldMixin, serializers.ModelSerializer):
     name = serializers.CharField(required=False)
     images = serializers.ListField(
         child=serializers.ImageField(required=False, allow_null=True),
@@ -67,13 +68,14 @@ class AssetSerializer(serializers.ModelSerializer):
         allow_null=True,
         default=list,
     )
-    custom_fields = DictionaryListField(child=serializers.DictField(), required=False)
     purchase_date = serializers.DateTimeField(
         format="iso-8601", required=False, allow_null=True
     )
     warranty_expiry_date = serializers.DateTimeField(
         format="iso-8601", required=False, allow_null=True
     )
+
+    CUSTOM_FIELD_MODULE_NAME = "asset"
 
     class Meta:
         model = Asset
@@ -130,18 +132,7 @@ class AssetSerializer(serializers.ModelSerializer):
                 mutable_data[field] = None
 
         # Handle custom_fields safely
-        custom_fields = mutable_data.get("custom_fields")
-
-        if custom_fields in ["", None]:
-            mutable_data.pop("custom_fields", None)
-
-        elif isinstance(custom_fields, str):
-            try:
-                mutable_data["custom_fields"] = json.loads(custom_fields)
-            except json.JSONDecodeError:
-                raise serializers.ValidationError(
-                    {"custom_fields": "Invalid JSON format"}
-                )
+        mutable_data = self.set_custom_fields_internal_value(data=mutable_data)
 
         return super().to_internal_value(mutable_data)
 
@@ -206,8 +197,8 @@ class AssetSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        custom_fields = validated_data.pop("custom_fields", {}) or {}
         images = validated_data.pop("images", []) or []
-        custom_fields = validated_data.pop("custom_fields", []) or []
         asset = Asset.objects.create(
             **validated_data,
             organization=self.context["request"].user.organization,
@@ -217,8 +208,9 @@ class AssetSerializer(serializers.ModelSerializer):
         for image in images:
             AssetImage.objects.create(image=image, asset=asset)
 
-
-
+        self.create_custom_field_entries(
+            created_object=asset, custom_fields=custom_fields
+        )
         return asset
 
     @transaction.atomic
@@ -290,7 +282,7 @@ class AssetSerializer(serializers.ModelSerializer):
         #         )
 
         # return instance
-        custom_fields = validated_data.pop("custom_fields", None)
+        custom_fields = validated_data.pop("custom_fields", {}) or {}
 
         # Update normal fields
         for attribute, value in validated_data.items():
@@ -303,8 +295,10 @@ class AssetSerializer(serializers.ModelSerializer):
             AssetImage.objects.create(asset=instance, image=image)
 
         # 🚀 ONLY RUN IF USER SENT custom_fields
-
-
+        self.update_custom_field_entries(
+            updated_object=instance,
+            custom_fields=custom_fields,
+        )
         return instance
 
     # def validate(self, attrs):

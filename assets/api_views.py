@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q, F
 from django.http import HttpResponse
 
+from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -207,6 +208,13 @@ class AddAsset(APIView):
                 )
             add_asset.save()
             return api_response(status=200, message="Asset data saved successfully")
+        except serializers.ValidationError as e:
+            return api_response(
+                status=400,
+                error_type="Validation_error",
+                error_location="Serializer",
+                validation_errors=format_validation_errors(e.get_full_details()),
+            )
         except ValueError as e:
             return api_response(status=400, error_message=str(e))
         except Exception as e:
