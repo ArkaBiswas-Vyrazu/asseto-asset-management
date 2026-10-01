@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
+from rest_framework import serializers
 from vendors.serializers import VendorSerializer
 from vendors.utils import (
     convert_to_list,
@@ -70,6 +71,13 @@ class AddVendor(APIView):
                 raise Exception(serializer.errors)
             serializer.save()
             return api_response(status=200, message="Vendor added successfully")
+        except serializers.ValidationError as e:
+            return api_response(
+                status=400,
+                error_type="Validation_error",
+                error_location="Serializer",
+                validation_errors=format_validation_errors(e.get_full_details()),
+            )
         except ValueError as e:
             return api_response(status=400, error_message=str(e))
         except Exception as e:
@@ -101,11 +109,23 @@ class UpdateVendor(APIView):
     def patch(self, request, id):
         try:
             get_vendor = get_object_or_404(Vendor, pk=id)
-            serializer = VendorSerializer(get_vendor, data=request.data, partial=True)
+            serializer = VendorSerializer(
+                get_vendor,
+                data=request.data,
+                partial=True,
+                context={"request": request},
+            )
             if not serializer.is_valid():
                 raise Exception(serializer.errors)
             serializer.save()
             return api_response(status=200, message="Vendor updated successfully")
+        except serializers.ValidationError as e:
+            return api_response(
+                status=400,
+                error_type="Validation_error",
+                error_location="Serializer",
+                validation_errors=format_validation_errors(e.get_full_details()),
+            )
         except ValueError as e:
             return api_response(status=400, error_message=str(e))
         except Exception as e:
