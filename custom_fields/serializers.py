@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 from rest_framework import serializers
-from rest_framework.request import Request
+from rest_framework.request import Request, QueryDict
 
 from dashboard.models import Organization
 
@@ -78,7 +78,29 @@ class CustomFieldsSerializerFieldMixin(metaclass=serializers.SerializerMetaclass
       Make sure custom fields are updated using this method only.
     """
 
-    custom_fields = serializers.JSONField(required=False)
+    custom_fields = serializers.JSONField(required=False, default=dict)
+
+    def get_mutable_dict(
+        self,
+        data: QueryDict,
+        empty_values: tuple = ("", None),
+        disable_pop: bool = False,
+    ) -> dict[str, Any]:
+        """Helper method to convert provided QueryDict to mutable dict object.
+
+        This also pops keys whose values have been set as one of the values
+        that are provided in the empty_values parameter. This can be disabled
+        using the disable_pop parameter.
+        """
+
+        _data = {}
+        for key, value in data.lists():
+            if disable_pop is False and all(_value in empty_values for _value in value):
+                continue
+
+            _data[key] = value[0] if len(value) == 1 else value
+
+        return _data
 
     def set_custom_fields_internal_value(self, data: dict) -> dict:
         """Set proper custom_fields data in provided data payload.
@@ -148,7 +170,10 @@ class CustomFieldsSerializerFieldMixin(metaclass=serializers.SerializerMetaclass
 
         custom_field_raw_data_errors = []
         for custom_field_definition in custom_field_definitions:
-            raw_value = custom_fields.get(custom_field_definition.field_key, "").strip()
+            raw_value = custom_fields.get(custom_field_definition.field_key, "")
+            if isinstance(raw_value, str):
+                raw_value = raw_value.strip()
+
             if not raw_value:
                 continue
 
@@ -182,7 +207,9 @@ class CustomFieldsSerializerFieldMixin(metaclass=serializers.SerializerMetaclass
         for custom_field_definition in custom_field_definitions:
             custom_field_data = (
                 custom_fields.get(custom_field_definition.field_key, "") or ""
-            ).strip()
+            )
+            if isinstance(custom_field_data, str):
+                custom_field_data = custom_field_data.strip()
 
             if custom_field_data or (
                 not custom_field_data and not custom_field_definition.is_required
@@ -203,7 +230,9 @@ class CustomFieldsSerializerFieldMixin(metaclass=serializers.SerializerMetaclass
         for custom_field_definition in custom_field_definitions:
             custom_field_data = (
                 custom_fields.get(custom_field_definition.field_key, "") or ""
-            ).strip()
+            )
+            if isinstance(custom_field_data, str):
+                custom_field_data = custom_field_data.strip()
 
             if not custom_field_data:
                 continue
@@ -237,7 +266,9 @@ class CustomFieldsSerializerFieldMixin(metaclass=serializers.SerializerMetaclass
         for custom_field_definition in custom_field_definitions:
             custom_field_data = (
                 custom_fields.get(custom_field_definition.field_key, "") or ""
-            ).strip()
+            )
+            if isinstance(custom_field_data, str):
+                custom_field_data = custom_field_data.strip()
 
             if not custom_field_data:
                 continue
